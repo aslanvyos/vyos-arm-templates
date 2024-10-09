@@ -1,0 +1,399 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "vyos_test",
+      "metadata": {
+        "description": "User name for the Virtual Machine."
+      }
+      },
+
+    "authenticationType": {
+      "type": "string",
+      "defaultValue": "password",
+      "allowedValues": [
+        "sshPublicKey",
+        "password"
+      ],
+      "metadata": {
+        "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "adminPasswordOrKey": {
+      "type": "securestring",
+      "defaultValue": "P@ssw0rd1234!",
+      "metadata": {
+        "description": "SSH password for the Virtual Machine."
+      }
+    },
+    "resourceTags": {
+      "type": "object",
+      "defaultValue": {
+        "Company": "Test",
+        "Project": "Azure Test",
+        "Status": "Temprorary"
+      }
+    }
+  },
+  
+  "variables": {
+    "vyOS-imagePublisher":"sentriumsl",
+    "vyOS-offer":"vyos-1-2-lts-on-azure",
+    "vyOS-sku":"vyos-1-3",
+    "vyOS-plan-name":"vyos-1-3",
+    "vyOS-plan-publisher":"sentriumsl",
+    "vyOS-plan-product": "vyos-1-2-lts-on-azure",
+    "vmSize": "Standard_D2s_v3",
+    "linuxConfiguration": {
+      "disablePasswordAuthentication": false  
+    },
+    "net-01-virtualNetwork-Name": "VyOS-Net-01",
+    "net-01-location": "westeurope",
+    "net-01-SecurityGroup-VyOS": "VyOS-SG-net-01",
+    "net-01-nic-01-Name": "VyOS-01-PRIV-NIC",
+    "net-01-nic-02-Name": "VyOS-01-PUB-NIC",
+    "net-01-addressPrefix": "10.1.0.0/16",
+    "net-01-subnet-01-Name": "VyOS-01-Priv-Subnet",
+    "net-01-subnet-02-Name": "VyOS-01-Pub-Subnet",
+    "net-01-subnet-01-Prefix": "10.1.1.0/24",
+    "net-01-subnet-02-Prefix": "10.1.11.0/24",
+    "net-01-vm-01-PrivateIP": "10.1.1.11",
+    "net-01-vm-01-PublicIP": "10.1.11.11",
+    "net-01-PublicIP": "Net-01-VyOS-Pub-IP",
+    "net-01-vm-03-Name": "VyOS-01",
+    "net-01-routeToVyOS": "Route-VyOS-01",
+    "net-01-subnetRef-01": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('net-01-virtualNetwork-Name'), variables('net-01-subnet-01-Name'))]",
+    "net-01-subnetRef-02": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('net-01-virtualNetwork-Name'), variables('net-01-subnet-02-Name'))]"
+      },
+
+  "resources": [
+{
+  "apiVersion": "2022-11-01",
+  "type": "Microsoft.Network/publicIPAddresses",
+  "name": "[variables('net-01-PublicIP')]",
+  "location": "[variables('net-01-location')]",
+  "sku": {
+    "name": "Standard"
+  },
+  "zones": [
+    "1",
+    "2",
+    "3"
+  ],
+  "properties": {
+    "publicIPAllocationMethod": "Static",
+    "publicIPAddressVersion": "IPv4"
+  }
+},
+
+    {
+      "comments": "Network Security Group for VyOS frontend",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('net-01-SecurityGroup-VyOS')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-ssh",
+            "properties": {
+              "priority": 1001,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "22",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-wireguard",
+            "properties": {
+              "priority": 1002,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "2224",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-openvpn",
+            "properties": {
+              "priority": 1003,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "1194",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-esp",
+            "properties": {
+              "priority": 1004,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "*",
+              "protocol": "Esp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-ike",
+            "properties": {
+              "priority": 1005,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "500",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-ipsec",
+            "properties": {
+              "priority": 1006,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "1701",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-nat-t",
+            "properties": {
+              "priority": 1007,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "4500",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-icmp",
+            "properties": {
+              "priority": 1008,
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Icmp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "*"
+            }
+          }
+        ]
+      }
+    },
+
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('net-01-routeToVyOS')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": [
+          {
+            "name": "Default-Route",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "VirtualAppliance",
+              "nextHopIpAddress": "[variables('net-01-vm-01-PrivateIP')]",
+              "hasBgpOverride": false
+            }
+          }
+        ]
+      }
+    },
+
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('net-01-virtualNetwork-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+      ],
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('net-01-addressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('net-01-subnet-01-Name')]",
+            "properties": {
+              "addressPrefix": "[variables('net-01-subnet-01-Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+              },
+              "routeTable": {
+                "id": "[resourceId('Microsoft.Network/routeTables',variables('net-01-routeToVyOS'))]"
+              }
+            }
+          },
+
+          {
+            "name": "[variables('net-01-subnet-02-Name')]",
+            "properties": {
+              "addressPrefix": "[variables('net-01-subnet-02-Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('net-01-nic-01-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('net-01-virtualNetwork-Name'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-03",
+            "properties": {
+            "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[variables('net-01-vm-01-PrivateIP')]",
+              "subnet": {
+                "id": "[variables('net-01-subnetRef-01')]"
+              }
+            }
+          }
+        ],
+        "enableIPForwarding": true,
+        "enableAcceleratedNetworking": true
+      }
+    },
+
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('net-01-nic-02-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('net-01-virtualNetwork-Name'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-04",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[variables('net-01-vm-01-PublicIP')]",    
+               "publicIPAddress": {
+                 "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('net-01-PublicIP'))]"
+               },
+              "subnet": {
+                "id": "[variables('net-01-subnetRef-02')]"
+              }
+            }
+          }
+        ],
+        "enableIPForwarding": true
+      }
+    },
+
+    {
+      "apiVersion": "2023-03-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[variables('net-01-vm-03-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('net-01-nic-01-Name'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('net-01-nic-02-Name'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[variables('net-01-vm-03-Name')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "storageProfile": {
+          "imageReference": {
+               "publisher": "[variables('vyOS-imagePublisher')]",
+               "offer": "[variables('vyOS-offer')]",
+               "sku": "[variables('vyOS-sku')]",
+               "version": "latest"
+          },
+          "osDisk": {
+            "name": "[concat(variables('net-01-vm-03-Name'),'_OSDisk')]",
+            "caching": "ReadWrite",
+            "createOption": "FromImage",
+            "deleteOption": "Delete"
+          }
+        },
+
+        "networkProfile": {
+          "networkInterfaces": [
+             {
+               "id":"[resourceId('Microsoft.Network/networkInterfaces',variables('net-01-nic-02-Name'))]",
+               "properties":{"primary": true}
+               },
+              {
+                "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('net-01-nic-01-Name'))]",
+                "properties":{"primary": false}
+             }
+          ]
+        }
+      }
+         ,
+         "plan": {
+           "name": "[variables('vyOS-plan-name')]",
+           "publisher": "[variables('vyOS-plan-publisher')]",
+           "product": "[variables('vyOS-plan-product')]"
+         }
+    }
+    
+  ],
+  "outputs": {
+    "adminUsername": {
+      "type": "string",
+      "value": "[parameters('adminUsername')]"
+    },
+    "adminPasswordOrKey": {
+      "type": "string",
+      "value": "[parameters('adminPasswordOrKey')]"
+    },
+    "VyOS-01-Public-IP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('net-01-PublicIP'))).ipAddress]"
+    }  
+  }
+}

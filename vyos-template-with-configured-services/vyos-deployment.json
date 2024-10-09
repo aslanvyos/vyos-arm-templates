@@ -1,0 +1,697 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "vyos_test",
+      "metadata": {
+        "description": "User name for the Virtual Machine."
+      }
+      },
+
+    "authenticationType": {
+      "type": "string",
+      "defaultValue": "password",
+      "allowedValues": [
+        "sshPublicKey",
+        "password"
+      ],
+      "metadata": {
+        "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "adminPasswordOrKey": {
+      "type": "securestring",
+      "defaultValue": "P@ssw0rd1234!",
+      "metadata": {
+        "description": "SSH password for the Virtual Machine."
+      }
+    },
+    "azureInstanceBgpASNumber": {
+      "type": "string",
+      "defaultValue": "65501",
+      "metadata": {
+        "description": "BGP AS number of the VyOS instance"
+      }
+    },
+    "onPremInstanceBgpASNumber": {
+      "type": "string",
+      "defaultValue": "65502",
+      "metadata": {
+        "description": "BGP AS number of the On-premises VyOS instance"
+      }
+    },
+    "onPremInstancePublicIP": {
+      "type": "string",
+      "defaultValue": "192.0.2.1",
+      "metadata": {
+        "description": "Corporate Datacenter Router Public IP"
+      }
+    },
+    "resourceTags": {
+      "type": "object",
+      "defaultValue": {
+        "Company": "Test",
+        "Project": "Azure Test",
+        "Status": "Temprorary"
+      }
+    }
+  },
+  "variables": {
+
+
+    "vyOS-imagePublisher":"sentriumsl",
+    "vyOS-offer":"vyos-1-2-lts-on-azure",
+    "vyOS-sku":"vyos-1-3",
+    "vyOS-plan-name":"vyos-1-3",
+    "vyOS-plan-publisher":"sentriumsl",
+    "vyOS-plan-product": "vyos-1-2-lts-on-azure",
+    "vmSize": "Standard_D2s_v3",
+    "linuxConfiguration": {
+      "disablePasswordAuthentication": false  
+    },
+    "net-01-virtualNetwork-Name": "VyOS-Net-01",
+    "net-01-location": "westeurope",
+    "net-01-SecurityGroup-VyOS": "VyOS-SG-net-01",
+    "net-01-nic-01-Name": "VyOS-01-PRIV-NIC",
+    "net-01-nic-02-Name": "VyOS-01-PUB-NIC",
+    "net-01-addressPrefix": "10.1.0.0/16",
+    "net-01-subnet-01-Name": "VyOS-01-Priv-Subnet",
+    "net-01-subnet-02-Name": "VyOS-01-Pub-Subnet",
+    "net-01-subnet-01-Prefix": "10.1.1.0/24",
+    "net-01-subnet-02-Prefix": "10.1.11.0/24",
+    "net-01-vm-01-PrivateIP": "10.1.1.11",
+    "net-01-vm-01-PublicIP": "10.1.11.11",
+    "net-01-PublicIP": "Net-01-VyOS-Pub-IP",
+    "net-01-vm-03-Name": "VyOS-01",
+    "net-01-routeToVyOS": "Route-VyOS-01",
+    "net-01-subnetRef-01": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('net-01-virtualNetwork-Name'), variables('net-01-subnet-01-Name'))]",
+    "net-01-subnetRef-02": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('net-01-virtualNetwork-Name'), variables('net-01-subnet-02-Name'))]",
+    
+    "net-01-vyosCustomData": [
+        "#cloud-config",
+        "vyos_config_commands:",
+        "    - set system host-name 'VyOS-01'",
+        "    - set system login banner pre-login 'Welcome to the VyOS Azure Test Drive'",
+        "    - set interfaces ethernet eth0 description 'OUTSIDE'",
+        "    - set interfaces ethernet eth1 description 'INSIDE'",
+        "    - set system name-server '8.8.8.8'",
+        "    - set system name-server '8.8.4.4'",
+        "    - set service dns forwarding name-server '8.8.8.8'",
+        "    - set service dns forwarding listen-address '10.1.1.11'",
+        "    - set service dns forwarding allow-from '10.1.1.0/24'",
+        "    - set service dns forwarding allow-from '10.1.2.0/24'",
+        "    - set service dns forwarding no-serve-rfc1918",
+        "    - set nat source rule 10 outbound-interface name 'eth0'",
+        "    - set nat source rule 10 source address '10.1.1.0/24'",
+        "    - set nat source rule 10 translation address 'masquerade'",
+        "    - set nat source rule 20 outbound-interface name 'eth0'",
+        "    - set nat source rule 20 source address '10.1.2.0/24'",
+        "    - set nat source rule 20 translation address 'masquerade'",
+        "    - set interfaces wireguard wg01 address '10.1.2.1/24'",
+        "    - set interfaces wireguard wg01 description 'RoadWarrior'",
+        "    - set interfaces wireguard wg01 private-key 'QCujh5k7BmwhMy4eCUjYVO7cIckBg3blX9U1zopcJ3g='",
+        "    - set interfaces wireguard wg01 peer WinPC allowed-ips '0.0.0.0/0'",
+        "    - set interfaces wireguard wg01 peer WinPC persistent-keepalive '15'",
+        "    - set interfaces wireguard wg01 peer WinPC public-key 'HWlo5yWlhZnnUgJDlWN2lQiDbsYhhTZJo33Go2zLPQA='",
+        "    - set interfaces wireguard wg01 port '2224'",
+        "    - set vpn ipsec interface 'eth0'",
+        "    - set firewall group network-group Remote-Wireguard network '10.1.2.0/24'",
+        "    - set firewall group port-group dns_ports port '53'",
+        "    - set firewall group port-group mail_ports port '110'",
+        "    - set firewall group port-group mail_ports port '25'",
+        "    - set firewall group port-group web_ports port '443'",
+        "    - set firewall group port-group web_ports port '8080'",
+        "    - set firewall group port-group web_ports port '80'",
+        "    - set firewall group address-group WEB-SRV address '10.1.1.21'",
+        "    - set firewall group address-group WEB-SRV address '10.2.1.21'",
+        "    - set firewall group address-group WEB-SRV address '10.3.1.21'",
+        "    - set firewall ipv4 forward filter default-action 'drop'",
+        "    - set firewall ipv4 forward filter rule 10 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 10 state 'established'",
+        "    - set firewall ipv4 forward filter rule 10 state 'related'",
+        "    - set firewall ipv4 forward filter rule 11 action 'drop'",
+        "    - set firewall ipv4 forward filter rule 11 state 'invalid'",
+        "    - set firewall ipv4 forward filter rule 20 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 20 description 'Allow incoming web requests to Web SRVs'",
+        "    - set firewall ipv4 forward filter rule 20 destination group address-group 'WEB-SRV'",
+        "    - set firewall ipv4 forward filter rule 20 destination group port-group 'web_ports'",
+        "    - set firewall ipv4 forward filter rule 20 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 forward filter rule 20 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 30 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 30 description 'Allow ICMP'",
+        "    - set firewall ipv4 forward filter rule 30 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 forward filter rule 30 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 forward filter rule 30 protocol 'icmp'",
+        "    - set firewall ipv4 forward filter rule 30 state 'new'",
+        "    - set firewall ipv4 forward filter rule 40 action 'drop'",
+        "    - set firewall ipv4 forward filter rule 40 description 'Mitigate SSH brute-forcing'",
+        "    - set firewall ipv4 forward filter rule 40 destination port '22'",
+        "    - set firewall ipv4 forward filter rule 40 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 forward filter rule 40 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 40 recent count '4'",
+        "    - set firewall ipv4 forward filter rule 40 recent time 'minute'",
+        "    - set firewall ipv4 forward filter rule 40 state 'new'",
+        "    - set firewall ipv4 forward filter rule 41 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 41 description 'Allow SSH'",
+        "    - set firewall ipv4 forward filter rule 41 destination port '22'",
+        "    - set firewall ipv4 forward filter rule 41 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 forward filter rule 41 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 41 state 'new'",
+        "    - set firewall ipv4 forward filter rule 120 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 120 description 'Allow wireguard clients web requests to Web SRVs'",
+        "    - set firewall ipv4 forward filter rule 120 destination group address-group 'WEB-SRV'",
+        "    - set firewall ipv4 forward filter rule 120 destination group port-group 'web_ports'",
+        "    - set firewall ipv4 forward filter rule 120 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 forward filter rule 120 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 130 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 130 description 'Allow wireguard clients ICMP'",
+        "    - set firewall ipv4 forward filter rule 130 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 forward filter rule 130 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 forward filter rule 130 protocol 'icmp'",
+        "    - set firewall ipv4 forward filter rule 130 state 'new'",
+        "    - set firewall ipv4 forward filter rule 140 action 'drop'",
+        "    - set firewall ipv4 forward filter rule 140 description 'Mitigate wireguard clients SSH brute-forcing'",
+        "    - set firewall ipv4 forward filter rule 140 destination port '22'",
+        "    - set firewall ipv4 forward filter rule 140 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 forward filter rule 140 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 140 recent count '4'",
+        "    - set firewall ipv4 forward filter rule 140 recent time 'minute'",
+        "    - set firewall ipv4 forward filter rule 140 state 'new'",
+        "    - set firewall ipv4 forward filter rule 141 action 'accept'",
+        "    - set firewall ipv4 forward filter rule 141 description 'Allow wireguard clients SSH'",
+        "    - set firewall ipv4 forward filter rule 141 destination port '22'",
+        "    - set firewall ipv4 forward filter rule 141 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 forward filter rule 141 protocol 'tcp'",
+        "    - set firewall ipv4 forward filter rule 141 state 'new'",
+        "    - set firewall ipv4 input filter default-action 'drop'",
+        "    - set firewall ipv4 input filter rule 10 action 'accept'",
+        "    - set firewall ipv4 input filter rule 10 description 'Allow established/related'",
+        "    - set firewall ipv4 input filter rule 10 state 'established'",
+        "    - set firewall ipv4 input filter rule 10 state 'related'",
+        "    - set firewall ipv4 input filter rule 11 action 'drop'",
+        "    - set firewall ipv4 input filter rule 11 state 'invalid'",
+        "    - set firewall ipv4 input filter rule 20 action 'accept'",
+        "    - set firewall ipv4 input filter rule 20 description 'WireGuard_IN'",
+        "    - set firewall ipv4 input filter rule 20 destination port '2224'",
+        "    - set firewall ipv4 input filter rule 20 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 20 log",
+        "    - set firewall ipv4 input filter rule 20 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 30 action 'accept'",
+        "    - set firewall ipv4 input filter rule 30 description 'OpenVPN_IN'",
+        "    - set firewall ipv4 input filter rule 30 destination port '1194'",
+        "    - set firewall ipv4 input filter rule 30 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 30 log",
+        "    - set firewall ipv4 input filter rule 30 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 40 action 'accept'",
+        "    - set firewall ipv4 input filter rule 40 description 'Allow ESP'",
+        "    - set firewall ipv4 input filter rule 40 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 40 protocol 'esp'",
+        "    - set firewall ipv4 input filter rule 50 action 'accept'",
+        "    - set firewall ipv4 input filter rule 50 description 'Allow ISAKMP'",
+        "    - set firewall ipv4 input filter rule 50 destination port '500'",
+        "    - set firewall ipv4 input filter rule 50 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 50 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 60 action 'accept'",
+        "    - set firewall ipv4 input filter rule 60 description 'IPSec NAT Traversal'",
+        "    - set firewall ipv4 input filter rule 60 destination port '4500'",
+        "    - set firewall ipv4 input filter rule 60 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 60 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 70 action 'accept'",
+        "    - set firewall ipv4 input filter rule 70 description 'Allow L2TP'",
+        "    - set firewall ipv4 input filter rule 70 destination port '1701'",
+        "    - set firewall ipv4 input filter rule 70 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 70 ipsec match-ipsec",
+        "    - set firewall ipv4 input filter rule 70 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 80 action 'accept'",
+        "    - set firewall ipv4 input filter rule 80 description 'Allow ICMP'",
+        "    - set firewall ipv4 input filter rule 80 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 input filter rule 80 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 80 protocol 'icmp'",
+        "    - set firewall ipv4 input filter rule 80 state 'new'",
+        "    - set firewall ipv4 input filter rule 90 action 'drop'",
+        "    - set firewall ipv4 input filter rule 90 description 'Mitigate SSH brute-forcing'",
+        "    - set firewall ipv4 input filter rule 90 destination port '22'",
+        "    - set firewall ipv4 input filter rule 90 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 90 protocol 'tcp'",
+        "    - set firewall ipv4 input filter rule 90 recent count '4'",
+        "    - set firewall ipv4 input filter rule 90 recent time 'minute'",
+        "    - set firewall ipv4 input filter rule 90 state 'new'",
+        "    - set firewall ipv4 input filter rule 91 action 'accept'",
+        "    - set firewall ipv4 input filter rule 91 description 'Allow SSH'",
+        "    - set firewall ipv4 input filter rule 91 destination port '22'",
+        "    - set firewall ipv4 input filter rule 91 inbound-interface name 'eth0'",
+        "    - set firewall ipv4 input filter rule 91 protocol 'tcp'",
+        "    - set firewall ipv4 input filter rule 91 state 'new'",
+        "    - set firewall ipv4 input filter rule 110 action 'accept'",
+        "    - set firewall ipv4 input filter rule 110 description 'Allow ICMP'",
+        "    - set firewall ipv4 input filter rule 110 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 input filter rule 110 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 input filter rule 110 protocol 'icmp'",
+        "    - set firewall ipv4 input filter rule 110 state 'new'",
+        "    - set firewall ipv4 input filter rule 120 action 'drop'",
+        "    - set firewall ipv4 input filter rule 120 description 'Mitigate SSH brute-forcing'",
+        "    - set firewall ipv4 input filter rule 120 destination port '22'",
+        "    - set firewall ipv4 input filter rule 120 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 input filter rule 120 protocol 'tcp'",
+        "    - set firewall ipv4 input filter rule 120 recent count '4'",
+        "    - set firewall ipv4 input filter rule 120 recent time 'minute'",
+        "    - set firewall ipv4 input filter rule 120 state 'new'",
+        "    - set firewall ipv4 input filter rule 130 action 'accept'",
+        "    - set firewall ipv4 input filter rule 130 description 'Allow SSH'",
+        "    - set firewall ipv4 input filter rule 130 destination port '22'",
+        "    - set firewall ipv4 input filter rule 130 inbound-interface name 'wg01'",
+        "    - set firewall ipv4 input filter rule 130 protocol 'tcp'",
+        "    - set firewall ipv4 input filter rule 130 state 'new'",
+        "    - set firewall ipv4 input filter rule 340 action 'accept'",
+        "    - set firewall ipv4 input filter rule 340 description 'Allow ESP'",
+        "    - set firewall ipv4 input filter rule 340 inbound-interface name 'vti1'",
+        "    - set firewall ipv4 input filter rule 340 protocol 'esp'",
+        "    - set firewall ipv4 input filter rule 350 action 'accept'",
+        "    - set firewall ipv4 input filter rule 350 description 'Allow ISAKMP'",
+        "    - set firewall ipv4 input filter rule 350 destination port '500'",
+        "    - set firewall ipv4 input filter rule 350 inbound-interface name 'vti1'",
+        "    - set firewall ipv4 input filter rule 350 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 360 action 'accept'",
+        "    - set firewall ipv4 input filter rule 360 description 'IPSec NAT Traversal'",
+        "    - set firewall ipv4 input filter rule 360 destination port '4500'",
+        "    - set firewall ipv4 input filter rule 360 inbound-interface name 'vti1'",
+        "    - set firewall ipv4 input filter rule 360 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 370 action 'accept'",
+        "    - set firewall ipv4 input filter rule 370 description 'Allow L2TP'",
+        "    - set firewall ipv4 input filter rule 370 destination port '1701'",
+        "    - set firewall ipv4 input filter rule 370 inbound-interface name 'vti1'",
+        "    - set firewall ipv4 input filter rule 370 ipsec match-ipsec",
+        "    - set firewall ipv4 input filter rule 370 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 380 action 'accept'",
+        "    - set firewall ipv4 input filter rule 380 description 'Allow ICMP'",
+        "    - set firewall ipv4 input filter rule 380 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 input filter rule 380 inbound-interface name 'vti1'",
+        "    - set firewall ipv4 input filter rule 380 protocol 'icmp'",
+        "    - set firewall ipv4 input filter rule 380 state 'new'",
+        "    - set firewall ipv4 input filter rule 540 action 'accept'",
+        "    - set firewall ipv4 input filter rule 540 description 'Allow ESP'",
+        "    - set firewall ipv4 input filter rule 540 inbound-interface name 'vti2'",
+        "    - set firewall ipv4 input filter rule 540 protocol 'esp'",
+        "    - set firewall ipv4 input filter rule 550 action 'accept'",
+        "    - set firewall ipv4 input filter rule 550 description 'Allow ISAKMP'",
+        "    - set firewall ipv4 input filter rule 550 destination port '500'",
+        "    - set firewall ipv4 input filter rule 550 inbound-interface name 'vti2'",
+        "    - set firewall ipv4 input filter rule 550 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 560 action 'accept'",
+        "    - set firewall ipv4 input filter rule 560 description 'IPSec NAT Traversal'",
+        "    - set firewall ipv4 input filter rule 560 destination port '4500'",
+        "    - set firewall ipv4 input filter rule 560 inbound-interface name 'vti2'",
+        "    - set firewall ipv4 input filter rule 560 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 570 action 'accept'",
+        "    - set firewall ipv4 input filter rule 570 description 'Allow L2TP'",
+        "    - set firewall ipv4 input filter rule 570 destination port '1701'",
+        "    - set firewall ipv4 input filter rule 570 inbound-interface name 'vti2'",
+        "    - set firewall ipv4 input filter rule 570 ipsec match-ipsec",
+        "    - set firewall ipv4 input filter rule 570 protocol 'udp'",
+        "    - set firewall ipv4 input filter rule 580 action 'accept'",
+        "    - set firewall ipv4 input filter rule 580 description 'Allow ICMP'",
+        "    - set firewall ipv4 input filter rule 580 icmp type-name 'echo-request'",
+        "    - set firewall ipv4 input filter rule 580 inbound-interface name 'vti2'",
+        "    - set firewall ipv4 input filter rule 580 protocol 'icmp'",
+        "    - set firewall ipv4 input filter rule 580 state 'new'",
+        "    - set vpn ipsec esp-group AZURE lifetime '3600'",
+        "    - set vpn ipsec esp-group AZURE mode 'tunnel'",
+        "    - set vpn ipsec esp-group AZURE pfs 'dh-group2'",
+        "    - set vpn ipsec esp-group AZURE proposal 1 encryption 'aes256'",
+        "    - set vpn ipsec esp-group AZURE proposal 1 hash 'sha1'",
+        "    - set vpn ipsec ike-group AZURE dead-peer-detection action 'restart'",
+        "    - set vpn ipsec ike-group AZURE dead-peer-detection interval '15'",
+        "    - set vpn ipsec ike-group AZURE dead-peer-detection timeout '30'",
+        "    - set vpn ipsec ike-group AZURE ikev2-reauth",
+        "    - set vpn ipsec ike-group AZURE key-exchange 'ikev2'",
+        "    - set vpn ipsec ike-group AZURE lifetime '28800'",
+        "    - set vpn ipsec ike-group AZURE proposal 1 dh-group '2'",
+        "    - set vpn ipsec ike-group AZURE proposal 1 encryption 'aes256'",
+        "    - set vpn ipsec ike-group AZURE proposal 1 hash 'sha1'",
+        "    - set interfaces vti vti1 address '10.1.100.11/32'",
+        "    - set interfaces vti vti1 description 'Azure Tunnel for VyOS on NET 02'",
+        "    - set interfaces vti vti1 ip adjust-mss '1350'",
+        "    - set protocols static route 10.2.100.11/32 interface vti1",
+        "    - set vpn ipsec authentication psk VyOS id '{0}'",
+        "    - set vpn ipsec authentication psk VyOS id '{3}'",
+        "    - set vpn ipsec authentication psk VyOS secret 'ch00s3-4-s3cur3-psk'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 authentication local-id '{0}'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 authentication mode 'pre-shared-secret'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 authentication remote-id '{3}'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 connection-type 'none'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 description 'AZURE TUNNEL to VyOS on NET 02'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 ike-group 'AZURE'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 ikev2-reauth 'inherit'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 local-address '10.1.11.11'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 remote-address '{3}'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 vti bind 'vti1'",
+        "    - set vpn ipsec site-to-site peer VyOS-02 vti esp-group 'AZURE'",
+        "    - set vpn ipsec option disable-route-autoinstall",
+        "    - set protocols bgp system-as '{1}'",
+        "    - set protocols bgp address-family ipv4-unicast network 10.1.1.0/24",
+        "    - set protocols bgp address-family ipv4-unicast network 10.1.2.0/24",
+        "    - set protocols bgp neighbor 10.2.100.11 remote-as '{2}'",
+        "    - set protocols bgp neighbor 10.2.100.11 address-family ipv4-unicast soft-reconfiguration inbound",
+        "    - set protocols bgp neighbor 10.2.100.11 timers holdtime '30'",
+        "    - set protocols bgp neighbor 10.2.100.11 timers keepalive '10'",
+        "    - set protocols bgp neighbor 10.2.100.11 disable-connected-check"     
+  ]
+      },
+
+  "resources": [
+
+{
+  "apiVersion": "2022-11-01",
+  "type": "Microsoft.Network/publicIPAddresses",
+  "name": "[variables('net-01-PublicIP')]",
+  "location": "[variables('net-01-location')]",
+  "sku": {
+    "name": "Standard"
+  },
+  "zones": [
+    "1",
+    "2",
+    "3"
+  ],
+  "properties": {
+    "publicIPAllocationMethod": "Static",
+    "publicIPAddressVersion": "IPv4"
+  }
+},
+
+
+    {
+      "comments": "Network Security Group for VyOS frontend",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('net-01-SecurityGroup-VyOS')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-ssh", 
+            "properties": {
+              "priority": 1001,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "22",
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-wireguard", 
+            "properties": {
+              "priority": 1002,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "2224",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-openvpn",
+            "properties": {
+              "priority": 1003,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "1194",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-esp",
+            "properties": {
+              "priority": 1004,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "*",
+              "protocol": "Esp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-ike",
+            "properties": {
+              "priority": 1005,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "500",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-ipsec",
+            "properties": {
+              "priority": 1006,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "1701",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-nat-t",
+            "properties": {
+              "priority": 1007,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "4500",
+              "protocol": "Udp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "allow-icmp",
+            "properties": {
+              "priority": 1008,
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Icmp",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "*"
+            }
+          }
+        ]
+      }
+    },
+
+
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('net-01-routeToVyOS')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": [
+          {
+            "name": "Default-Route",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "VirtualAppliance",
+              "nextHopIpAddress": "[variables('net-01-vm-01-PrivateIP')]",
+              "hasBgpOverride": false
+            }
+          }
+        ]
+      }
+    },
+
+
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('net-01-virtualNetwork-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+      ],
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('net-01-addressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('net-01-subnet-01-Name')]",
+            "properties": {
+              "addressPrefix": "[variables('net-01-subnet-01-Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+              },
+              "routeTable": {
+                "id": "[resourceId('Microsoft.Network/routeTables',variables('net-01-routeToVyOS'))]"
+              }
+            }
+          },
+
+          {
+            "name": "[variables('net-01-subnet-02-Name')]",
+            "properties": {
+              "addressPrefix": "[variables('net-01-subnet-02-Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('net-01-SecurityGroup-VyOS'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    
+
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('net-01-nic-01-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('net-01-virtualNetwork-Name'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-03",
+            "properties": {
+            "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[variables('net-01-vm-01-PrivateIP')]",
+              "subnet": {
+                "id": "[variables('net-01-subnetRef-01')]"
+              }
+            }
+          }
+        ],
+        "enableIPForwarding": true
+      }
+    },
+
+    {
+      "apiVersion": "2023-04-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('net-01-nic-02-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('net-01-virtualNetwork-Name'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-04",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[variables('net-01-vm-01-PublicIP')]",    
+               "publicIPAddress": {
+                 "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('net-01-PublicIP'))]"
+               },
+              "subnet": {
+                "id": "[variables('net-01-subnetRef-02')]"
+              }
+            }
+          }
+        ],
+        "enableIPForwarding": true
+      }
+    },
+
+
+    {
+      "apiVersion": "2023-03-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[variables('net-01-vm-03-Name')]",
+      "location": "[variables('net-01-location')]",
+      "tags": "[parameters('resourceTags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('net-01-nic-01-Name'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('net-01-nic-02-Name'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[variables('net-01-vm-03-Name')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "customData": "[base64(format(join(variables('net-01-vyosCustomData'), '\n'), reference(resourceId('Microsoft.Network/publicIPAddresses', variables('net-01-PublicIP'))).ipAddress, parameters('azureInstanceBgpASnumber'), parameters('onPremInstanceBgpASnumber') ,parameters('onPremInstancePublicIP')))]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "storageProfile": {
+          "imageReference": {
+               "publisher": "[variables('vyOS-imagePublisher')]",
+               "offer": "[variables('vyOS-offer')]",
+               "sku": "[variables('vyOS-sku')]",
+               "version": "latest"
+          },
+          "osDisk": {
+            "name": "[concat(variables('net-01-vm-03-Name'),'_OSDisk')]",
+            "caching": "ReadWrite",
+            "createOption": "FromImage",
+            "deleteOption": "Delete"
+          }
+        },
+
+        "networkProfile": {
+          "networkInterfaces": [
+             {
+               "id":"[resourceId('Microsoft.Network/networkInterfaces',variables('net-01-nic-02-Name'))]",
+               "properties":{"primary": true}
+               },
+              {
+                "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('net-01-nic-01-Name'))]",
+                "properties":{"primary": false}
+             }
+          ]
+        }
+      }
+         ,
+         "plan": {
+           "name": "[variables('vyOS-plan-name')]",
+           "publisher": "[variables('vyOS-plan-publisher')]",
+           "product": "[variables('vyOS-plan-product')]"
+         }
+    }
+    
+  ],
+  "outputs": {
+    "adminUsername": {
+      "type": "string",
+      "value": "[parameters('adminUsername')]"
+    },
+    "adminPasswordOrKey": {
+      "type": "string",
+      "value": "[parameters('adminPasswordOrKey')]"
+    },
+    "VyOS-01-Public-IP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('net-01-PublicIP'))).ipAddress]"
+    }  
+  }
+}
